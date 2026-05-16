@@ -1,0 +1,95 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribución / empaquetado
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Entornos virtuales
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ===== Google ADK / Credenciales =====
+# NUNCA commitear claves o tokens
+*.key
+*.pem
+credentials.json
+service-account*.json
+client_secret*.json
+token.json
+.env.local
+.env.*.local
+
+# ADK / Vertex AI / GCP
+.gcloud/
+adk_cache/
+.adk/
+
+# ===== Testing y cobertura =====
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# ===== Jupyter =====
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# ===== Herramientas y type checkers =====
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# ===== IDEs / Editores =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Datos pesados / temporales =====
+*.tmp
+*.temp
+data/raw/
+data/processed/
+*.sqlite
+*.db
