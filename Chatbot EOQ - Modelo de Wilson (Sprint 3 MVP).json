@@ -1,0 +1,267 @@
+{
+  "name": "Chatbot EOQ - Modelo de Wilson (Sprint 3 MVP)",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "fa0dfa7f-f2a0-4408-9f0f-7c5d47d53b3e",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        144,
+        976
+      ],
+      "webhookId": "eoq-chatbot-solver-squad"
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxIterations": 15
+        }
+      },
+      "id": "840676f9-64a5-41f5-8f5f-6e894260abd8",
+      "name": "AI Agent EOQ",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        688,
+        976
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "14aa3ddb-58f7-4580-92f5-a258d270d7cd",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        448,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "name": "calcular_eoq",
+        "description": "Calcula la Cantidad Económica de Pedido (EOQ / q0) usando el Modelo de Wilson. Input: JSON string con {\"D\": demanda, \"K\": costo_fijo_pedido, \"c1\": costo_mantenimiento_unidad, \"T\": duracion_periodo}. Retorna q0 (lote óptimo), CTE (costo total), número de pedidos, tiempo entre pedidos y desglose de costos.",
+        "jsCode": "// Herramienta: calcular_eoq\n// Implementa el Modelo de Wilson (EOQ)\n\nlet params;\ntry {\n  params = JSON.parse(query);\n} catch (e) {\n  return 'Error al parsear parámetros. Enviá un JSON válido. Ejemplo: {\"D\": 1200, \"K\": 4000, \"c1\": 800, \"T\": 1}';\n}\n\nconst D  = parseFloat(params.D);\nconst K  = parseFloat(params.K);\nconst c1 = parseFloat(params.c1);\nconst T  = parseFloat(params.T !== undefined && params.T !== '' ? params.T : 1);\n\n// Validaciones de seguridad\nif ([D, K, c1, T].some(v => isNaN(v) || v <= 0)) {\n  return JSON.stringify({\n    error: true,\n    mensaje: 'Todos los parámetros deben ser números positivos. D>0, K>0, c1>0, T>0.'\n  });\n}\n\n// Fórmula de Wilson: q0 = sqrt(2*K*D / (T*c1))\nconst q0_exacto = Math.sqrt((2 * K * D) / (T * c1));\nconst q0 = Math.round(q0_exacto);\n\n// Costo total con EOQ exacto\nconst costo_pedido    = (D / q0_exacto) * K;\nconst costo_mantener  = (q0_exacto / 2) * T * c1;\nconst CTE_exacto      = costo_pedido + costo_mantener;\n\n// Costo total con EOQ redondeado\nconst CTE_redondeado = (D / q0) * K + (q0 / 2) * T * c1;\n\n// Métricas derivadas\nconst N = D / q0_exacto;          // número de pedidos por período\nconst t = T / N;                   // tiempo entre pedidos (en unidades de T)\nconst t_dias = Math.round(t * 365); // tiempo en días (asume T en años)\n\nreturn JSON.stringify({\n  q0_exacto:              parseFloat(q0_exacto.toFixed(2)),\n  q0_redondeado:          q0,\n  CTE_exacto:             parseFloat(CTE_exacto.toFixed(2)),\n  CTE_redondeado:         parseFloat(CTE_redondeado.toFixed(2)),\n  costo_pedido_periodo:   parseFloat(costo_pedido.toFixed(2)),\n  costo_mantener_periodo: parseFloat(costo_mantener.toFixed(2)),\n  numero_pedidos:         parseFloat(N.toFixed(2)),\n  tiempo_entre_pedidos:   parseFloat(t.toFixed(4)),\n  tiempo_entre_pedidos_dias: t_dias,\n  parametros_usados:      { D, K, c1, T },\n  verificacion_formula:   `q0 = sqrt((2 * ${K} * ${D}) / (${T} * ${c1})) = sqrt(${(2*K*D/(T*c1)).toFixed(2)}) = ${q0_exacto.toFixed(2)}`\n});"
+      },
+      "id": "cd30959a-1424-47bb-9109-31c5ed5ad017",
+      "name": "Tool: calcular_eoq",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        592,
+        1216
+      ]
+    },
+    {
+      "parameters": {
+        "name": "validar_parametros",
+        "description": "Valida que los parámetros para el cálculo EOQ sean correctos (numéricos y positivos). Input: JSON string con {\"D\": demanda, \"K\": costo_pedido, \"c1\": costo_mantenimiento, \"T\": periodo}. Retorna si son válidos y los errores encontrados.",
+        "jsCode": "// Herramienta: validar_parametros\n\nlet params;\ntry {\n  params = JSON.parse(query);\n} catch (e) {\n  return JSON.stringify({\n    valido: false,\n    errores: ['No se pudo parsear el JSON de parámetros'],\n    mensaje: 'Error de formato. Enviá: {\"D\": valor, \"K\": valor, \"c1\": valor, \"T\": valor}'\n  });\n}\n\nconst errores = [];\nconst campos = [\n  { clave: 'D',  nombre: 'Demanda (D)' },\n  { clave: 'K',  nombre: 'Costo fijo por pedido (K)' },\n  { clave: 'c1', nombre: 'Costo de mantenimiento (c1)' }\n];\n\nfor (const { clave, nombre } of campos) {\n  const valor = params[clave];\n  if (valor === undefined || valor === null || valor === '') {\n    errores.push(`${nombre}: parámetro requerido, no fue proporcionado`);\n  } else if (isNaN(parseFloat(valor))) {\n    errores.push(`${nombre}: debe ser un número (recibido: \"${valor}\")`);\n  } else if (parseFloat(valor) <= 0) {\n    errores.push(`${nombre}: debe ser mayor que 0 (recibido: ${valor})`);\n  }\n}\n\n// T es opcional (default 1)\nif (params.T !== undefined && params.T !== null && params.T !== '') {\n  const T = parseFloat(params.T);\n  if (isNaN(T) || T <= 0) {\n    errores.push(`Duración del período (T): debe ser un número positivo (recibido: ${params.T})`);\n  }\n}\n\nif (errores.length > 0) {\n  return JSON.stringify({\n    valido: false,\n    errores,\n    mensaje: `Parámetros inválidos:\\n${errores.map(e => '• ' + e).join('\\n')}\\nCorregí estos valores e intentá nuevamente.`\n  });\n}\n\nreturn JSON.stringify({\n  valido: true,\n  mensaje: 'Todos los parámetros son válidos. Procediendo al cálculo.',\n  parametros_validados: {\n    D: parseFloat(params.D),\n    K: parseFloat(params.K),\n    c1: parseFloat(params.c1),\n    T: parseFloat(params.T !== undefined && params.T !== '' ? params.T : 1)\n  }\n});"
+      },
+      "id": "32443df4-7b02-4eea-9c9d-ff5299d278e7",
+      "name": "Tool: validar_parametros",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "name": "explicar_concepto",
+        "description": "Proporciona explicaciones sobre conceptos del Modelo EOQ/Wilson. Input: JSON string con {\"concepto\": \"nombre\"}. Conceptos: eoq, demanda, costo_pedido, costo_mantenimiento, cte, supuestos, formula, restricciones.",
+        "jsCode": "// Herramienta: explicar_concepto\n\nlet params;\ntry {\n  params = JSON.parse(query);\n} catch (e) {\n  params = { concepto: query.toLowerCase().trim() };\n}\n\nconst concepto = (params.concepto || '').toLowerCase()\n  .normalize('NFD').replace(/[\\u0300-\\u036f]/g, ''); // quitar acentos\n\nconst base = {\n  eoq: `## Modelo EOQ (Cantidad Económica de Pedido)\nTambién conocido como **Modelo de Wilson** o Modelo I. Es un modelo determinístico estático que calcula el tamaño óptimo del lote de pedido que **minimiza el Costo Total Esperado (CTE)**.\n\nEquilibra dos fuerzas económicas contrapuestas:\n- 📦 **Costo de pedir** (disminuye si pedimos más cantidad cada vez)\n- 🏭 **Costo de mantener** (aumenta si pedimos más cantidad cada vez)\n\nEl óptimo está exactamente donde ambas curvas se intersectan.`,\n\n  demanda: `## Demanda (D)\nCantidad total de unidades requeridas durante el período de análisis T.\n\n**Supuesto clave**: en el EOQ la demanda es **constante y conocida** (determinística). No hay variabilidad.\n\nEjemplo: D = 1.200 unidades/año (la ferretería vende 1.200 bolsas de cemento por año).`,\n\n  costo_pedido: `## Costo de Pedido / Preparación (K)\nCosto **fijo** asociado a emitir una orden de compra, **independiente del tamaño del lote**.\n\nIncluye: gastos administrativos, comunicación, recepción, logística.\n\nEjemplo: K = $4.000 por pedido (sin importar si se piden 10 o 1.000 unidades).`,\n\n  costo_mantenimiento: `## Costo de Mantenimiento (c1)\nCosto de mantener **una unidad** almacenada durante **una unidad de tiempo**.\n\nIncluye: alquiler del depósito, seguros, deterioro, capital inmovilizado.\n\nEjemplo: c1 = $800/unidad/año (mantener una bolsa de cemento un año cuesta $800).`,\n\n  cte: `## Costo Total Esperado (CTE)\nFunción que el modelo **minimiza**:\n\n> **CTE = (D/q) × K + (q/2) × T × c1**\n\nDonde:\n- **(D/q) × K** = Costo total de emisión de órdenes en el período\n- **(q/2) × T × c1** = Costo total de almacenamiento en el período\n- q = cantidad pedida por orden\n\nCada término baja cuando el otro sube: ese equilibrio define el óptimo.`,\n\n  supuestos: `## Supuestos del Modelo EOQ/Wilson\n1. **Demanda constante y conocida** (sin variabilidad)\n2. **Plazo de entrega nulo** (o constante y conocido, caso avanzado)\n3. **No se permiten faltantes** (ruptura de stock = no permitida)\n4. **Costo unitario constante** (sin descuentos por volumen)\n5. **Horizonte de planificación continuo** (el modelo se repite indefinidamente)\n6. **Un solo producto** en la versión básica`,\n\n  formula: `## Fórmula de Wilson (Lote Óptimo)\n\n> **q₀ = √( 2 × K × D / (T × c1) )**\n\nParámetros:\n| Símbolo | Significado |\n|---------|-------------|\n| D | Demanda total del período |\n| K | Costo fijo por pedido |\n| c1 | Costo de mantenimiento por unidad/período |\n| T | Duración del período (default: 1 año) |\n\nEsta fórmula se obtiene derivando la función CTE respecto a q e igualando a cero: dCTE/dq = 0.`,\n\n  restricciones: `## Restricciones del Modelo\n\n**A. No negatividad** (condición obligatoria de PL):\n> q ≥ 0 y N ≥ 0\n\n**B. Positividad de parámetros**:\n> D > 0, K > 0, c1 > 0, T > 0\n\n**C. Capacidad de almacenamiento** (restricción operativa):\n> ∑(sᵢ × Nᵢₜ) ≤ S\n\nDonde sᵢ = superficie/volumen que ocupa una unidad del producto i, y S = capacidad total del depósito. Si q₀ > capacidad máxima, el lote óptimo queda restringido por el espacio físico.`\n};\n\nconst claves = Object.keys(base);\nconst match = claves.find(k => concepto.includes(k)) ||\n              claves.find(k => k.includes(concepto));\n\nif (base[concepto]) {\n  return base[concepto];\n} else if (match) {\n  return base[match];\n} else {\n  return `Concepto \"${concepto}\" no encontrado.\\n\\nConceptos disponibles:\\n${claves.map(k => '• ' + k).join('\\n')}\\n\\n¿Sobre cuál querés aprender?`;\n}"
+      },
+      "id": "8d6d3c1a-7e98-4b76-a7ad-85bf6c65cfc2",
+      "name": "Tool: explicar_concepto",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "name": "modo_practica",
+        "description": "Genera ejercicios de práctica del modelo EOQ. Input: JSON string con {\"ejercicio\": numero} (1, 2 o 3). Retorna enunciado, datos del problema y solución para que el agente pueda verificar la respuesta del usuario.",
+        "jsCode": "// Herramienta: modo_practica\n\nlet params;\ntry {\n  params = JSON.parse(query);\n} catch (e) {\n  params = { ejercicio: 1 };\n}\n\nconst num = parseInt(params.ejercicio) || 1;\n\nconst ejercicios = [\n  {\n    id: 1,\n    contexto: 'Ferretería local (bolsas de cemento)',\n    enunciado: 'Una ferretería ubicada en Resistencia vende **1.200 bolsas de cemento** por año.\\n\\n' +\n               '- Costo de emitir un pedido: **$4.000** (gastos administrativos, recepción y logística)\\n' +\n               '- Costo de mantener una bolsa en inventario: **$800/año**\\n' +\n               '- Horizonte de planificación: T = 1 año\\n\\n' +\n               '**¿Cuál es la cantidad óptima de pedido (q₀)?**\\n' +\n               '*(Redondeá el resultado al entero más cercano)*',\n    datos: { D: 1200, K: 4000, c1: 800, T: 1 },\n    solucion: {\n      q0_exacto: 109.54,\n      q0_redondeado: 110,\n      CTE: 87636.36,\n      paso_a_paso: 'q0 = sqrt((2 × 4000 × 1200) / (1 × 800)) = sqrt(9.600.000 / 800) = sqrt(12.000) ≈ 109,54 ≈ **110 unidades**'\n    },\n    pista: 'Aplicá la Fórmula de Wilson: q₀ = √(2 × K × D / (T × c1)). Con D=1200, K=4000, c1=800, T=1... el numerador es 2×4000×1200 = 9.600.000'\n  },\n  {\n    id: 2,\n    contexto: 'Empresa de pintura (latas)',\n    enunciado: 'Una distribuidora de materiales de construcción maneja **2.400 latas de pintura** por año.\\n\\n' +\n               '- Costo por pedido: **$5.000**\\n' +\n               '- Costo de almacenamiento: **$600/lata/año**\\n' +\n               '- T = 1 año\\n\\n' +\n               '**¿Cuál es el EOQ y cuántos pedidos se realizan por año?**',\n    datos: { D: 2400, K: 5000, c1: 600, T: 1 },\n    solucion: {\n      q0_exacto: 200,\n      q0_redondeado: 200,\n      N: 12,\n      CTE: 120000,\n      paso_a_paso: 'q0 = sqrt((2 × 5000 × 2400) / (1 × 600)) = sqrt(24.000.000 / 600) = sqrt(40.000) = **200 unidades**\\nN = D/q0 = 2400/200 = **12 pedidos/año**'\n    },\n    pista: 'Con D=2400, K=5000, c1=600: el numerador es 2×5000×2400 = 24.000.000. El denominador es 600. ¿Cuánto es 24.000.000/600?'\n  },\n  {\n    id: 3,\n    contexto: 'Depósito de tornillos (período trimestral)',\n    enunciado: 'Un depósito maneja **800 unidades de tornillos** por trimestre (T = 0,25 años).\\n\\n' +\n               '- Costo por orden: **$1.500**\\n' +\n               '- Costo de mantener: **$200/unidad/año**\\n\\n' +\n               '**¿Cuál es el lote óptimo (q₀) y cuál es el tiempo entre pedidos en días?**',\n    datos: { D: 800, K: 1500, c1: 200, T: 0.25 },\n    solucion: {\n      q0_exacto: 173.2,\n      q0_redondeado: 173,\n      t_dias: 20,\n      CTE: 8660,\n      paso_a_paso: 'q0 = sqrt((2 × 1500 × 800) / (0,25 × 200)) = sqrt(2.400.000 / 50) = sqrt(48.000) ≈ 219... Espera, recalculando: sqrt((2×1500×800)/(0.25×200)) = sqrt(2400000/50) = sqrt(48000) ≈ **219 unidades**. t = T/N = 0,25/(800/219) ≈ **0,068 años ≈ 25 días**'\n    },\n    pista: 'Atención: T=0,25 (un trimestre, no un año). El denominador de la fórmula es T×c1 = 0,25 × 200 = 50'\n  }\n];\n\nconst ej = ejercicios[(num - 1) % ejercicios.length];\n\n// Recalcular solución correcta\nconst D = ej.datos.D, K = ej.datos.K, c1 = ej.datos.c1, T = ej.datos.T;\nconst q0_real = Math.sqrt((2 * K * D) / (T * c1));\nconst q0_r = Math.round(q0_real);\nconst N_real = D / q0_real;\nconst t_real = T / N_real;\nconst CTE_real = (D/q0_real)*K + (q0_real/2)*T*c1;\n\nreturn JSON.stringify({\n  ejercicio_id: ej.id,\n  contexto: ej.contexto,\n  enunciado: ej.enunciado,\n  datos: ej.datos,\n  total_ejercicios: ejercicios.length,\n  solucion_correcta: {\n    q0_exacto: parseFloat(q0_real.toFixed(2)),\n    q0_redondeado: q0_r,\n    CTE: parseFloat(CTE_real.toFixed(2)),\n    N: parseFloat(N_real.toFixed(2)),\n    t_dias: Math.round(t_real * 365)\n  },\n  pista: ej.pista\n});"
+      },
+      "id": "fe4a3371-cd9d-4285-89bd-8e4518e09842",
+      "name": "Tool: modo_practica",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        1104,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "name": "generar_grafico",
+        "description": "Genera una URL de gráfico que muestra las curvas del Modelo EOQ: costo de pedido, costo de mantenimiento y costo total, con el punto óptimo marcado. Input: JSON string con {\"D\": demanda, \"K\": costo_pedido, \"c1\": costo_mantenimiento, \"T\": periodo, \"q0\": lote_optimo}. Retorna URL del gráfico y descripción de las curvas.",
+        "jsCode": "// Herramienta: generar_grafico\n// Genera gráfico EOQ usando QuickChart.io\n\nlet params;\ntry {\n  params = JSON.parse(query);\n} catch (e) {\n  return 'Error al parsear parámetros para el gráfico.';\n}\n\nconst D  = parseFloat(params.D);\nconst K  = parseFloat(params.K);\nconst c1 = parseFloat(params.c1);\nconst T  = parseFloat(params.T || 1);\nconst q0 = parseFloat(params.q0 || Math.sqrt((2 * K * D) / (T * c1)));\n\nif ([D, K, c1, T, q0].some(v => isNaN(v) || v <= 0)) {\n  return 'Error: parámetros inválidos para generar el gráfico.';\n}\n\n// Rango del gráfico: de 10% a 300% del EOQ\nconst qMin = Math.max(1, Math.round(q0 * 0.1));\nconst qMax = Math.round(q0 * 3);\nconst PUNTOS = 40;\n\nconst labels = [];\nconst dataCostoPedido = [];\nconst dataCostoMantener = [];\nconst dataCostoTotal = [];\n\nfor (let i = 0; i <= PUNTOS; i++) {\n  const q = qMin + (qMax - qMin) * i / PUNTOS;\n  labels.push(Math.round(q));\n  dataCostoPedido.push(parseFloat(((D / q) * K).toFixed(2)));\n  dataCostoMantener.push(parseFloat(((q / 2) * T * c1).toFixed(2)));\n  dataCostoTotal.push(parseFloat((((D / q) * K) + ((q / 2) * T * c1)).toFixed(2)));\n}\n\nconst CTE_min = parseFloat(((D / q0) * K + (q0 / 2) * T * c1).toFixed(2));\n\nconst chartConfig = {\n  type: 'line',\n  data: {\n    labels: labels,\n    datasets: [\n      {\n        label: 'Costo de Pedido',\n        data: dataCostoPedido,\n        borderColor: 'rgb(54, 162, 235)',\n        backgroundColor: 'rgba(54, 162, 235, 0.05)',\n        borderWidth: 2,\n        fill: false,\n        tension: 0.4,\n        pointRadius: 0\n      },\n      {\n        label: 'Costo de Mantenimiento',\n        data: dataCostoMantener,\n        borderColor: 'rgb(255, 99, 132)',\n        backgroundColor: 'rgba(255, 99, 132, 0.05)',\n        borderWidth: 2,\n        fill: false,\n        tension: 0.4,\n        pointRadius: 0\n      },\n      {\n        label: 'Costo Total (CTE)',\n        data: dataCostoTotal,\n        borderColor: 'rgb(40, 167, 69)',\n        backgroundColor: 'rgba(40, 167, 69, 0.1)',\n        borderWidth: 3,\n        fill: false,\n        tension: 0.4,\n        pointRadius: 0\n      }\n    ]\n  },\n  options: {\n    title: {\n      display: true,\n      text: 'Modelo EOQ - q0=' + Math.round(q0) + ' uds | CTE min=$' + CTE_min.toLocaleString(),\n      fontSize: 14\n    },\n    legend: { position: 'top' },\n    scales: {\n      xAxes: [{\n        scaleLabel: { display: true, labelString: 'Cantidad de Pedido (q)' }\n      }],\n      yAxes: [{\n        scaleLabel: { display: true, labelString: 'Costo ($)' }\n      }]\n    }\n  }\n};\n\nconst configStr = JSON.stringify(chartConfig);\nconst chartUrl = 'https://quickchart.io/chart?w=750&h=420&c=' + encodeURIComponent(configStr);\n\nreturn JSON.stringify({\n  url_grafico: chartUrl,\n  q0_redondeado: Math.round(q0),\n  CTE_minimo: CTE_min,\n  descripcion_curvas: [\n    '🔵 Curva azul (Costo de Pedido): decrece hiperbólicamente cuando q aumenta. Pedidos más grandes = menos pedidos = menos costo de emisión.',\n    '🔴 Curva roja (Costo de Mantenimiento): crece linealmente cuando q aumenta. Pedidos más grandes = más stock promedio = más costo de almacenamiento.',\n    '🟢 Curva verde (Costo Total): tiene forma de U. El mínimo de esta curva es exactamente el EOQ (q₀=' + Math.round(q0) + ' unidades).',\n    '📍 El punto de intersección entre la curva azul y la roja coincide con el mínimo del CTE, confirmando la fórmula de Wilson.'\n  ],\n  interpretacion: 'El gráfico demuestra visualmente por qué el EOQ es óptimo: cualquier cantidad mayor o menor que q₀=' + Math.round(q0) + ' unidades genera un costo total mayor a $' + CTE_min.toLocaleString() + '.'\n});"
+      },
+      "id": "c9e5f977-179e-4b44-9099-38508e450ab3",
+      "name": "Tool: generar_grafico",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        1216,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        288,
+        1216
+      ],
+      "id": "db1abc1a-f69f-4cad-b5cb-2c1a8b231a6d",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "m9OwV4qcTkjMNIme",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent EOQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent EOQ",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: calcular_eoq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent EOQ",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: validar_parametros": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent EOQ",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: explicar_concepto": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent EOQ",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: modo_practica": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent EOQ",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: generar_grafico": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent EOQ",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent EOQ",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4454b966-c334-4611-b0b8-e775534d075e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1df532ef00c882c716e3726cc97bed4ba4c1ac53ffdba86a925f4ceb86d74676"
+  },
+  "id": "gdZGPerFeZOkBEGC",
+  "tags": [
+    {
+      "updatedAt": "2026-05-05T20:13:04.777Z",
+      "createdAt": "2026-05-05T20:13:04.777Z",
+      "id": "XwZUJaTP2x6ZXvI9",
+      "name": "chatbot"
+    },
+    {
+      "updatedAt": "2026-05-05T20:13:04.805Z",
+      "createdAt": "2026-05-05T20:13:04.805Z",
+      "id": "QJuvxFfLHbJmqa0z",
+      "name": "EOQ"
+    },
+    {
+      "updatedAt": "2026-05-05T20:13:04.778Z",
+      "createdAt": "2026-05-05T20:13:04.778Z",
+      "id": "jaFEyc40rbE96yll",
+      "name": "inventarios"
+    },
+    {
+      "updatedAt": "2026-05-05T20:13:04.792Z",
+      "createdAt": "2026-05-05T20:13:04.792Z",
+      "id": "MEX7NUZwSe38wvaF",
+      "name": "wilson"
+    }
+  ]
+}
