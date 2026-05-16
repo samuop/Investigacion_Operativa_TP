@@ -18,10 +18,10 @@ cd Investigacion_Operativa_TP
 
 ### 2. Crear y activar un entorno virtual
 
-**Windows:**
-```bash
+**Windows (PowerShell):**
+```powershell
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 ```
 
 **Mac / Linux:**
@@ -29,6 +29,9 @@ python -m venv .venv
 python -m venv .venv
 source .venv/bin/activate
 ```
+
+> En PowerShell, si aparece un error de política de ejecución, correr primero:
+> `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
 
 ### 3. Instalar dependencias
 
@@ -91,7 +94,7 @@ Investigacion_Operativa_TP/
 └── README.md
 ```
 
-## Sololucion de problemas comunes
+## Solucion de problemas comunes
 
 **`ModuleNotFoundError: google.adk`**
 > Asegurarse de tener el entorno virtual activado y haber corrido `pip install -r requirements.txt`.
