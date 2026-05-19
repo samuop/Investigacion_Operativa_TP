@@ -1,3 +1,15 @@
+## TP de Investigación Operativa
+
+**Equipo:** Solver squad
+
+**Integrantes:**
+- Barabas, Axel Daniel
+- Codas, Agustin Alejandro
+- Ibaigorria, Ignacio Iván
+- Insaurralde, Sebastián
+- Paredes, Samuel Octavio
+- Zapata, Rodrigo
+
 # Chatbot EOQ - Modelo de Wilson
 
 Agente conversacional para calcular y explicar el **Modelo de Inventario EOQ (Cantidad Economica de Pedido)**, construido con [Google ADK](https://adk.dev) y Gemini.
