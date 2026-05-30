@@ -1,4 +1,3 @@
-import os
 from google.adk.agents import Agent
 from eoq_agent.tools import (
     calcular_eoq,
@@ -53,7 +52,9 @@ Ayudás a estudiantes y profesionales a:
 
 root_agent = Agent(
     name="eoq_chatbot",
-    model=os.getenv("MODEL", "gemini-2.0-flash"),
+    # Modelo inicial. Se sobrescribe en runtime con build_runner() usando el
+    # modelo que el usuario guardó en SQLite desde la UI de Configuración.
+    model="gemini-2.5-flash",
     description="Asistente especializado en el Modelo EOQ (Cantidad Económica de Pedido) / Modelo de Wilson.",
     instruction=SYSTEM_PROMPT,
     tools=[

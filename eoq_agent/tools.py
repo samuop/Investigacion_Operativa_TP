@@ -1,6 +1,7 @@
 import math
 import json
-from urllib.parse import quote
+import base64
+import urllib.request
 
 
 def calcular_eoq(D: float, K: float, c1: float, T: float = 1.0) -> dict:
@@ -342,7 +343,27 @@ def generar_grafico(D: float, K: float, c1: float, T: float = 1.0, q0: float = N
         },
     }
 
-    chart_url = "https://quickchart.io/chart?w=750&h=420&c=" + quote(json.dumps(chart_config))
+    # POST a QuickChart — evita el límite de longitud de GET
+    payload = json.dumps({
+        "chart": chart_config,
+        "width": 750,
+        "height": 420,
+        "backgroundColor": "white",
+        "format": "png",
+    }).encode("utf-8")
+
+    try:
+        req = urllib.request.Request(
+            "https://quickchart.io/chart/create",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+        chart_url = result.get("url", "")
+    except Exception as e:
+        chart_url = ""
 
     return {
         "url_grafico": chart_url,
