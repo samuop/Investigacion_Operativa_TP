@@ -1,5 +1,7 @@
 import math
 import json
+import os
+import random
 import base64
 import urllib.request
 
@@ -183,60 +185,210 @@ def explicar_concepto(concepto: str) -> str:
     return f'Concepto "{concepto}" no encontrado.\n\nConceptos disponibles: {conceptos_disp}'
 
 
+# --- Modo práctica: generación dinámica de escenarios ---
+
+_RUBROS_SEED = [
+    ("Ferretería de barrio", "bolsas de cemento", "bolsa"),
+    ("Distribuidora de pintura", "latas de pintura de 4L", "lata"),
+    ("Panadería industrial", "kilos de harina 000", "kg"),
+    ("Kiosco mayorista", "cajas de golosinas", "caja"),
+    ("Tienda de electrónica", "auriculares bluetooth", "unidad"),
+    ("Farmacia", "blisters de ibuprofeno 400mg", "blister"),
+    ("Vivero", "bolsas de sustrato de 50L", "bolsa"),
+    ("Imprenta", "resmas de papel A4", "resma"),
+    ("Repuestería automotriz", "filtros de aceite", "filtro"),
+    ("Carpintería", "planchas de MDF de 18mm", "plancha"),
+    ("Bodega de vinos", "botellas de Malbec reserva", "botella"),
+    ("Heladería artesanal", "kilos de chocolate cobertura", "kg"),
+    ("Taller textil", "rollos de tela de algodón", "rollo"),
+    ("Distribuidora gastronómica", "cajas de aceite de oliva", "caja"),
+    ("Fábrica de muebles", "cajas de tornillos pasantes 6x70", "caja"),
+    ("Importadora de juguetes", "sets de bloques de construcción", "set"),
+    ("Vidriería", "planchas de vidrio float 4mm", "plancha"),
+    ("Distribuidor de bebidas", "cajas de cerveza artesanal", "caja"),
+]
+
+_CIUDADES = [
+    "Resistencia", "Corrientes", "Posadas", "Formosa", "Salta", "Mendoza",
+    "Rosario", "La Plata", "Bahía Blanca", "Neuquén", "Córdoba", "Tucumán",
+]
+
+
+def _construir_prompt_escenario(seed: dict) -> str:
+    return f"""Sos un generador de ejercicios para el Modelo EOQ (Wilson) de inventarios.
+Tu tarea: inventar UN problema realista, en español rioplatense, con datos coherentes.
+
+## Reglas estrictas
+1. Devolvé EXCLUSIVAMENTE un objeto JSON válido, sin texto adicional, sin markdown, sin ```json.
+2. Esquema requerido:
+{{
+  "contexto": "string corto (3-7 palabras) identificando el negocio y producto",
+  "enunciado": "string en markdown con la historia del problema, datos en negrita, terminando con la pregunta",
+  "datos": {{"D": número, "K": número, "c1": número, "T": número}},
+  "pista": "string con una pista útil sin revelar el resultado final"
+}}
+
+3. Los parámetros DEBEN cumplir:
+   - D (demanda del período): entero positivo entre 200 y 50.000
+   - K (costo por pedido): entero positivo en pesos argentinos, entre 1.000 y 80.000
+   - c1 (costo de mantener una unidad por período): número positivo entre 50 y 5.000
+   - T (duración del período en años): uno de [1, 0.5, 0.25] (anual, semestral o trimestral)
+   - El q0 resultante (raíz(2·K·D/(T·c1))) debe quedar entre 20 y 2.500 unidades aproximadamente.
+   - Los números deben ser "redondos" y fáciles de leer (múltiplos de 50, 100, 500 o 1000 cuando sea posible).
+
+4. El enunciado debe:
+   - Tener entre 2 y 5 líneas.
+   - Mencionar el rubro, la ciudad, y dar D, K, c1 y T explícitamente con sus unidades.
+   - Usar formato markdown: **negrita** en los datos numéricos.
+   - Terminar con una pregunta clara (cantidad óptima, CTE, número de pedidos, tiempo entre pedidos, etc).
+   - NUNCA revelar el resultado.
+
+5. La pista debe orientar (por ejemplo, recordar la fórmula o señalar el valor del numerador) pero NO dar el q0.
+
+6. NO uses LaTeX. NO uses el símbolo $ excepto para precios concretos (ej: $4.500).
+
+## Semillas de inspiración (usalas como guía, no copies literal)
+- Rubro sugerido: {seed['rubro']}
+- Producto sugerido: {seed['producto']}
+- Unidad: {seed['unidad']}
+- Ciudad sugerida: {seed['ciudad']}
+- Período sugerido (T en años): {seed['T']}
+- Escala de demanda sugerida: aproximadamente {seed['escala_D']} unidades
+
+Recordá: respondé SOLO con el JSON, nada más."""
+
+
+def _generar_escenario_llm() -> dict | None:
+    """Intenta generar un escenario nuevo con Gemini. Devuelve None si falla."""
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return None
+
+    seed = {
+        "rubro": random.choice(_RUBROS_SEED)[0],
+        "producto": random.choice(_RUBROS_SEED)[1],
+        "unidad": random.choice(_RUBROS_SEED)[2],
+        "ciudad": random.choice(_CIUDADES),
+        "T": random.choice([1, 1, 1, 0.5, 0.25]),
+        "escala_D": random.choice([500, 1200, 2400, 5000, 10000, 20000]),
+    }
+
+    prompt = _construir_prompt_escenario(seed)
+    modelo = os.environ.get("MODEL", "gemini-2.5-flash")
+
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 1.1,
+            "responseMimeType": "application/json",
+        },
+    }).encode("utf-8")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        texto = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        if texto.startswith("```"):
+            texto = texto.strip("`")
+            if texto.startswith("json"):
+                texto = texto[4:]
+            texto = texto.strip()
+        escenario = json.loads(texto)
+    except Exception:
+        return None
+
+    if not _validar_escenario(escenario):
+        return None
+    return escenario
+
+
+def _validar_escenario(esc: dict) -> bool:
+    """Verifica que el escenario tenga estructura válida y q0 razonable."""
+    try:
+        datos = esc["datos"]
+        D = float(datos["D"])
+        K = float(datos["K"])
+        c1 = float(datos["c1"])
+        T = float(datos["T"])
+        if D <= 0 or K <= 0 or c1 <= 0 or T <= 0:
+            return False
+        q0 = math.sqrt((2 * K * D) / (T * c1))
+        if not (5 <= q0 <= 5000):
+            return False
+        if not (esc.get("enunciado") and esc.get("contexto")):
+            return False
+        return True
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _escenario_fallback_aleatorio() -> dict:
+    """Plantillas con datos aleatorizados; siempre producen un q0 sano."""
+    plantilla = random.choice(_RUBROS_SEED)
+    rubro, producto, unidad = plantilla
+    ciudad = random.choice(_CIUDADES)
+    T = random.choice([1, 1, 1, 0.5, 0.25])
+
+    D = random.choice([600, 800, 1000, 1200, 1500, 2000, 2400, 3000, 5000, 7500, 10000])
+    K = random.choice([1500, 2000, 3000, 4000, 5000, 7500, 10000, 15000])
+    c1 = random.choice([100, 150, 200, 300, 400, 500, 600, 800, 1000])
+
+    t_label = {1: "1 año", 0.5: "6 meses (semestre)", 0.25: "1 trimestre"}[T]
+    enunciado = (
+        f"Una **{rubro.lower()}** ubicada en **{ciudad}** maneja una demanda de "
+        f"**{D:,} {producto}** durante un período de **{t_label}**.\n\n"
+        f"- Costo de emitir un pedido: **${K:,}**\n"
+        f"- Costo de mantener una unidad por año: **${c1:,}/{unidad}/año**\n"
+        f"- T = {T} año\n\n"
+        f"**¿Cuál es la cantidad óptima de pedido (q₀) y el CTE asociado?**"
+    ).replace(",", ".")
+
+    numerador = 2 * K * D
+    pista = (
+        f"Aplicá la fórmula de Wilson: q₀ = raiz(2·K·D / (T·c1)). "
+        f"El numerador es 2·{K}·{D} = {numerador:,}.".replace(",", ".")
+    )
+
+    return {
+        "contexto": f"{rubro} ({producto})",
+        "enunciado": enunciado,
+        "datos": {"D": D, "K": K, "c1": c1, "T": T},
+        "pista": pista,
+    }
+
+
 def modo_practica(ejercicio: int = 1) -> dict:
-    """Genera ejercicios de práctica del modelo EOQ con enunciado y solución.
+    """Genera un ejercicio de práctica del modelo EOQ con un escenario inventado al vuelo.
+
+    El escenario se genera dinámicamente con un LLM para evitar repetición.
+    Si la generación falla, se usa una plantilla aleatorizada como fallback.
+    La solución se recalcula siempre con la fórmula real, garantizando que el ejercicio cierre.
 
     Args:
-        ejercicio: Número de ejercicio a generar (1, 2 o 3).
+        ejercicio: Parámetro de compatibilidad (ya no selecciona un fijo, solo se conserva).
 
     Returns:
         Diccionario con enunciado, datos del problema y solución correcta.
     """
-    ejercicios = [
-        {
-            "id": 1,
-            "contexto": "Ferretería local (bolsas de cemento)",
-            "enunciado": (
-                "Una ferretería en Resistencia vende **1.200 bolsas de cemento** por año.\n\n"
-                "- Costo de emitir un pedido: **$4.000**\n"
-                "- Costo de mantener una bolsa: **$800/año**\n"
-                "- T = 1 año\n\n"
-                "**¿Cuál es la cantidad óptima de pedido (q₀)?**"
-            ),
-            "datos": {"D": 1200, "K": 4000, "c1": 800, "T": 1},
-            "pista": "Aplicá la Fórmula de Wilson: q₀ = √(2×K×D / T×c1). El numerador es 2×4000×1200 = 9.600.000",
-        },
-        {
-            "id": 2,
-            "contexto": "Distribuidora de pintura (latas)",
-            "enunciado": (
-                "Una distribuidora maneja **2.400 latas de pintura** por año.\n\n"
-                "- Costo por pedido: **$5.000**\n"
-                "- Costo de almacenamiento: **$600/lata/año**\n"
-                "- T = 1 año\n\n"
-                "**¿Cuál es el EOQ y cuántos pedidos se realizan por año?**"
-            ),
-            "datos": {"D": 2400, "K": 5000, "c1": 600, "T": 1},
-            "pista": "El numerador es 2×5000×2400 = 24.000.000. El denominador es 600.",
-        },
-        {
-            "id": 3,
-            "contexto": "Depósito de tornillos (período trimestral)",
-            "enunciado": (
-                "Un depósito maneja **800 unidades de tornillos** por trimestre (T = 0,25 años).\n\n"
-                "- Costo por orden: **$1.500**\n"
-                "- Costo de mantener: **$200/unidad/año**\n\n"
-                "**¿Cuál es el lote óptimo (q₀) y el tiempo entre pedidos en días?**"
-            ),
-            "datos": {"D": 800, "K": 1500, "c1": 200, "T": 0.25},
-            "pista": "Atención: T=0,25 (trimestre). El denominador es T×c1 = 0,25 × 200 = 50",
-        },
-    ]
+    escenario = _generar_escenario_llm()
+    fuente = "generado"
+    if escenario is None:
+        escenario = _escenario_fallback_aleatorio()
+        fuente = "plantilla"
 
-    idx = (ejercicio - 1) % len(ejercicios)
-    ej = ejercicios[idx]
+    datos = escenario["datos"]
+    D = float(datos["D"])
+    K = float(datos["K"])
+    c1 = float(datos["c1"])
+    T = float(datos["T"])
 
-    D, K, c1, T = ej["datos"]["D"], ej["datos"]["K"], ej["datos"]["c1"], ej["datos"]["T"]
     q0_real = math.sqrt((2 * K * D) / (T * c1))
     q0_r = round(q0_real)
     N_real = D / q0_real
@@ -244,11 +396,11 @@ def modo_practica(ejercicio: int = 1) -> dict:
     CTE_real = (D / q0_real) * K + (q0_real / 2) * T * c1
 
     return {
-        "ejercicio_id": ej["id"],
-        "contexto": ej["contexto"],
-        "enunciado": ej["enunciado"],
-        "datos": ej["datos"],
-        "total_ejercicios": len(ejercicios),
+        "ejercicio_id": ejercicio,
+        "fuente": fuente,
+        "contexto": escenario["contexto"],
+        "enunciado": escenario["enunciado"],
+        "datos": {"D": D, "K": K, "c1": c1, "T": T},
         "solucion_correcta": {
             "q0_exacto": round(q0_real, 2),
             "q0_redondeado": q0_r,
@@ -256,7 +408,7 @@ def modo_practica(ejercicio: int = 1) -> dict:
             "N": round(N_real, 2),
             "t_dias": round(t_real * 365),
         },
-        "pista": ej["pista"],
+        "pista": escenario.get("pista", "Aplicá la fórmula de Wilson: q₀ = raiz(2·K·D / (T·c1))."),
     }
 
 
