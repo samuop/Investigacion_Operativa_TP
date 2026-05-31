@@ -9,10 +9,16 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [sessions, setSessions] = useState<SessionOut[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [backendDown, setBackendDown] = useState(false);
 
   const loadSessions = useCallback(async () => {
-    const list = await api.getSessions().catch(() => []);
-    setSessions(list);
+    try {
+      const list = await api.getSessions();
+      setSessions(list);
+      setBackendDown(false);
+    } catch (e: any) {
+      if (e?.type === "backend") setBackendDown(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -20,9 +26,14 @@ export default function App() {
   }, [loadSessions]);
 
   async function handleNew() {
-    const s = await api.createSession();
-    setSessions((prev) => [s, ...prev]);
-    setActiveId(s.id);
+    try {
+      const s = await api.createSession();
+      setSessions((prev) => [s, ...prev]);
+      setActiveId(s.id);
+      setBackendDown(false);
+    } catch (e: any) {
+      if (e?.type === "backend") setBackendDown(true);
+    }
   }
 
   function handleSelect(id: string) {
@@ -40,6 +51,12 @@ export default function App() {
 
   return (
     <div className="app">
+      {backendDown && (
+        <div className="backend-banner">
+          🔌 Sin conexión con el servidor — verificá que el backend esté corriendo (<code>npm run dev</code>).
+          <button onClick={loadSessions}>Reintentar</button>
+        </div>
+      )}
       <Sidebar
         sessions={sessions}
         activeId={activeId}

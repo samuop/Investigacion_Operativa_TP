@@ -112,15 +112,24 @@ class ChatOut(BaseModel):
 # Endpoint para listar modelos disponibles con una API key
 # --------------------------------------------------------------------------- #
 
-@app.get("/models")
-async def list_models(api_key: str):
-    """Devuelve los modelos Gemini disponibles para la API key dada."""
+class ModelsIn(BaseModel):
+    api_key: str
+
+
+@app.post("/models")
+async def list_models(body: ModelsIn):
+    """Devuelve los modelos Gemini disponibles para la API key dada.
+
+    La key viaja en el body (no en la URL) para que no quede registrada
+    en logs de acceso, historial del navegador ni cabeceras Referer.
+    """
     import httpx
+    api_key = body.api_key
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(
                 "https://generativelanguage.googleapis.com/v1beta/models",
-                params={"key": api_key},
+                headers={"x-goog-api-key": api_key},
             )
         if r.status_code == 400:
             raise HTTPException(status_code=400, detail="API key inválida.")

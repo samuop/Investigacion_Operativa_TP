@@ -38,6 +38,41 @@ body {
   width: 100%;
 }
 
+/* Banner global de backend caído */
+.backend-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  background: var(--error);
+  color: #fff;
+  font-size: 0.85rem;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+.backend-banner code {
+  background: rgba(0,0,0,0.25);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.8rem;
+}
+.backend-banner button {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.4);
+  color: #fff;
+  border-radius: 6px;
+  padding: 3px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.backend-banner button:hover { background: rgba(255,255,255,0.3); }
+
 .main {
   flex: 1;
   min-width: 0;
@@ -198,34 +233,107 @@ body {
   gap: 16px;
 }
 
-/* Estado vacío: sin sesión seleccionada */
-.chat-empty {
+/* ── Pantalla de bienvenida ── */
+.welcome {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  color: var(--text-muted);
-  text-align: center;
+  gap: 22px;
+  padding: 20px;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  overflow: hidden;
 }
-.chat-empty-icon { font-size: 3rem; }
-.chat-empty h2 { color: var(--text); font-size: 1.4rem; }
-.chat-empty p { font-size: 0.9rem; }
 
-/* Bienvenida al abrir sesión nueva */
-.chat-welcome {
+.welcome-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.welcome-icon {
+  color: var(--accent);
+  display: flex;
+  margin-bottom: 2px;
+}
+.welcome-hero h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0.5px;
+}
+.welcome-hero p {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  max-width: 440px;
+  line-height: 1.5;
+}
+.welcome-hero strong { color: var(--accent); }
+
+/* Texto con shimmer animado estilo Google */
+.welcome-shine {
+  background: linear-gradient(
+    100deg,
+    var(--text-muted) 30%,
+    #4f8ef7 45%,
+    #a855f7 50%,
+    #4f8ef7 55%,
+    var(--text-muted) 70%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  font-weight: 600;
+  animation: shine 3.5s linear infinite;
+}
+@keyframes shine {
+  to { background-position: -200% center; }
+}
+
+.welcome-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+}
+
+.welcome-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px 24px;
-  max-width: 520px;
-  align-self: center;
-  margin-top: 40px;
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s, box-shadow 0.15s;
 }
-.chat-welcome p { color: var(--text-muted); margin-bottom: 10px; font-size: 0.9rem; }
-.chat-welcome ul { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
-.chat-welcome li { font-size: 0.85rem; color: var(--text); }
+.welcome-card:hover {
+  border-color: var(--accent);
+  background: var(--surface2);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(79,142,247,0.12);
+}
+.welcome-card-icon {
+  color: var(--accent);
+  display: flex;
+  margin-bottom: 2px;
+}
+.welcome-card-title { font-size: 0.92rem; font-weight: 700; color: var(--text); }
+.welcome-card-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
+
+@media (max-width: 560px) {
+  .welcome-cards { grid-template-columns: 1fr; }
+}
 
 /* ── Messages ── */
 .message { display: flex; max-width: 75%; }
@@ -277,7 +385,7 @@ body {
   padding: 14px 16px;
   align-self: stretch;
 }
-.chat-error-icon { font-size: 1.4rem; flex-shrink: 0; line-height: 1.4; }
+.chat-error-icon { flex-shrink: 0; display: flex; color: var(--error); padding-top: 1px; }
 .chat-error-body { display: flex; flex-direction: column; gap: 4px; font-size: 0.87rem; }
 .chat-error-body strong { color: var(--error); }
 .chat-error-body p { color: var(--text); margin: 0; }

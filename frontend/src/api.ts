@@ -22,14 +22,38 @@ export interface ChatOut {
   session_id: string;
 }
 
+/** Error con un `type` para que la UI muestre el mensaje amigable correcto. */
+export class ApiError extends Error {
+  type: string;
+  constructor(message: string, type = "unknown") {
+    super(message);
+    this.type = type;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    });
+  } catch {
+    // fetch lanza TypeError cuando no puede conectar → backend caído
+    throw new ApiError(
+      "No se pudo conectar con el servidor. Verificá que el backend esté corriendo.",
+      "backend",
+    );
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? "Error desconocido");
+    const detail = err.detail ?? "Error desconocido";
+    // Inferir el tipo a partir del status / mensaje
+    let type = "unknown";
+    if (res.status === 400 && /api key/i.test(detail)) type = "no_key";
+    else if (res.status >= 500) type = "backend";
+    throw new ApiError(detail, type);
   }
   return res.json();
 }
@@ -48,7 +72,10 @@ export const api = {
     }),
 
   getModels: (api_key: string) =>
-    request<{ models: string[] }>(`/models?api_key=${encodeURIComponent(api_key)}`),
+    request<{ models: string[] }>("/models", {
+      method: "POST",
+      body: JSON.stringify({ api_key }),
+    }),
 
   getSessions: () => request<SessionOut[]>("/sessions"),
 
@@ -79,11 +106,17 @@ export const api = {
     onReply: (full: string) => void,
     onError: (msg: string, type?: string) => void,
   ) => {
-    const res = await fetch(`${BASE}/chat/stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id, message }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id, message }),
+      });
+    } catch {
+      onError("No se pudo conectar con el servidor.", "backend");
+      return;
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));

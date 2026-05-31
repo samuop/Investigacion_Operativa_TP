@@ -30,10 +30,13 @@ export default function Settings({ onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [backendDown, setBackendDown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    api.getConfig().then((c) => setConfig(c));
+    api.getConfig()
+      .then((c) => setConfig(c))
+      .catch((e: any) => { if (e?.type === "backend") setBackendDown(true); });
 
     // Si hay config guardada, pre-llenar key y cargar modelos disponibles
     api.getConfigFull().then(async (full) => {
@@ -51,8 +54,9 @@ export default function Settings({ onClose }: Props) {
       } finally {
         setFetchingModels(false);
       }
-    }).catch(() => {
-      // Sin config previa, no hacer nada
+    }).catch((e: any) => {
+      // 404 = sin config previa (normal). backend = servidor caído.
+      if (e?.type === "backend") setBackendDown(true);
     });
   }, []);
 
@@ -100,7 +104,10 @@ export default function Settings({ onClose }: Props) {
       setMsg({ text: "Configuración guardada correctamente.", ok: true });
       setConfig({ model, has_api_key: true });
     } catch (err: any) {
-      setMsg({ text: `Error: ${err.message}`, ok: false });
+      const text = err?.type === "backend"
+        ? "No se pudo conectar con el servidor. ¿Está corriendo el backend?"
+        : `Error: ${err.message}`;
+      setMsg({ text, ok: false });
     } finally {
       setSaving(false);
     }
@@ -137,6 +144,13 @@ export default function Settings({ onClose }: Props) {
           </div>
           <button className="btn-close" onClick={onClose} aria-label="Cerrar">✕</button>
         </div>
+
+        {/* Backend caído — bloquea todo lo demás */}
+        {backendDown && (
+          <div className="settings-status warn">
+            <span>🔌 No se pudo conectar con el servidor. Verificá que el backend esté corriendo (terminal con <code>npm run dev</code>) y reabrí esta ventana.</span>
+          </div>
+        )}
 
         {/* Estado actual */}
         {config?.has_api_key ? (

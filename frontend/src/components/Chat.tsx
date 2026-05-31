@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  Calculator, BookOpen, PenLine, LineChart, Package,
+  Hourglass, CloudOff, KeyRound, Unplug, AlertTriangle,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { api, MessageOut } from "../api";
 
 interface Props {
@@ -9,39 +14,39 @@ interface Props {
   onSessionUpdate?: () => void;
 }
 
-const ERROR_INFO: Record<string, { icon: string; title: string; body: string; hint?: string }> = {
+const ERROR_INFO: Record<string, { Icon: LucideIcon; title: string; body: string; hint?: string }> = {
   quota: {
-    icon: "⏳",
+    Icon: Hourglass,
     title: "Límite de cuota alcanzado",
     body: "Tu API key gratuita agotó el límite de consultas del día.",
     hint: "Las cuotas se reestablecen automáticamente a la medianoche (hora del Pacífico). Podés cambiar el modelo o usar otra API key desde Configuración.",
   },
   unavailable: {
-    icon: "🌐",
+    Icon: CloudOff,
     title: "Modelo temporalmente no disponible",
     body: "El modelo está experimentando alta demanda en este momento.",
     hint: "Esperá unos segundos e intentá de nuevo. Si el problema persiste, probá con otro modelo desde Configuración.",
   },
   invalid_key: {
-    icon: "🔑",
+    Icon: KeyRound,
     title: "API key inválida",
     body: "La API key configurada no es válida o fue revocada.",
     hint: "Ingresá a Configuración y actualizá tu API key desde aistudio.google.com.",
   },
   no_key: {
-    icon: "🔑",
+    Icon: KeyRound,
     title: "Sin API key configurada",
     body: "Todavía no configuraste una API key de Google AI Studio.",
     hint: "Abrí Configuración (abajo a la izquierda) e ingresá tu API key gratuita.",
   },
   backend: {
-    icon: "🔌",
+    Icon: Unplug,
     title: "Sin conexión al backend",
     body: "No se pudo conectar con el servidor.",
     hint: "Verificá que el backend esté corriendo: uvicorn backend.main:app --reload",
   },
   unknown: {
-    icon: "⚠",
+    Icon: AlertTriangle,
     title: "Error inesperado",
     body: "Ocurrió un error al procesar tu consulta.",
     hint: "Intentá de nuevo. Si persiste, revisá los logs del backend.",
@@ -50,9 +55,10 @@ const ERROR_INFO: Record<string, { icon: string; title: string; body: string; hi
 
 function ChatError({ type }: { type?: string }) {
   const info = ERROR_INFO[type ?? "unknown"] ?? ERROR_INFO.unknown;
+  const { Icon } = info;
   return (
     <div className="chat-error-card">
-      <div className="chat-error-icon">{info.icon}</div>
+      <div className="chat-error-icon"><Icon size={22} strokeWidth={1.8} /></div>
       <div className="chat-error-body">
         <strong>{info.title}</strong>
         <p>{info.body}</p>
@@ -156,6 +162,59 @@ function AssistantMessage({ content, showCursor }: { content: string; showCursor
   );
 }
 
+// Las 4 capacidades del bot, como tarjetas clickeables
+const CAPABILITIES = [
+  {
+    Icon: Calculator,
+    title: "Calcular EOQ",
+    desc: "Obtené el lote óptimo (q0) y el costo total.",
+    prompt: "Calculá el EOQ con D=1200, K=4000, c1=800, T=1",
+  },
+  {
+    Icon: BookOpen,
+    title: "Explicar conceptos",
+    desc: "Supuestos, fórmula, CTE y restricciones del modelo.",
+    prompt: "¿Qué es el CTE en el modelo EOQ?",
+  },
+  {
+    Icon: PenLine,
+    title: "Practicar",
+    desc: "Resolvé ejercicios paso a paso.",
+    prompt: "Dame un ejercicio para practicar el modelo EOQ",
+  },
+  {
+    Icon: LineChart,
+    title: "Ver el gráfico",
+    desc: "Visualizá las curvas de costo y el óptimo.",
+    prompt: "Generá el gráfico de costos con D=1200, K=4000, c1=800",
+  },
+];
+
+function Welcome({ onPick }: { onPick: (prompt: string) => void }) {
+  return (
+    <div className="welcome">
+      <div className="welcome-hero">
+        <div className="welcome-icon"><Package size={36} strokeWidth={1.8} /></div>
+        <h1>Chatbot EOQ</h1>
+        <p>
+          Tu asistente del <strong>Modelo de Wilson</strong> para optimización de inventarios.{" "}
+          <span className="welcome-shine">Elegí una opción o escribí tu consulta.</span>
+        </p>
+      </div>
+
+      <div className="welcome-cards">
+        {CAPABILITIES.map(({ Icon, title, desc, prompt }) => (
+          <button key={title} className="welcome-card" onClick={() => onPick(prompt)}>
+            <span className="welcome-card-icon"><Icon size={22} strokeWidth={1.8} /></span>
+            <span className="welcome-card-title">{title}</span>
+            <span className="welcome-card-desc">{desc}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Chat({ sessionId, onSessionCreated, onSessionUpdate }: Props) {
   const [messages, setMessages] = useState<MessageOut[]>([]);
   const [typing, setTyping] = useState<string | null>(null); // texto en typewriter
@@ -210,7 +269,10 @@ export default function Chat({ sessionId, onSessionCreated, onSessionUpdate }: P
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    const text = input.trim();
+    await sendText(input.trim());
+  }
+
+  async function sendText(text: string) {
     if (!text || loading) return;
 
     // Crear sesión automáticamente si no hay una activa
@@ -266,26 +328,9 @@ export default function Chat({ sessionId, onSessionCreated, onSessionUpdate }: P
     <div className="chat">
       <div className="chat-messages">
 
-        {/* Sin sesión y sin mensajes — pantalla de bienvenida */}
-        {!sessionId && messages.length === 0 && (
-          <div className="chat-empty">
-            <div className="chat-empty-icon">📦</div>
-            <h2>Chatbot EOQ</h2>
-            <p>Escribí tu consulta y se creará la conversación automáticamente.</p>
-          </div>
-        )}
-
-        {/* Sesión abierta sin mensajes */}
-        {sessionId && messages.length === 0 && !loading && !typing && (
-          <div className="chat-welcome">
-            <p>¡Hola! Soy tu asistente EOQ. Podés:</p>
-            <ul>
-              <li>Calcular q0 — <em>"D=1200, K=4000, c1=800"</em></li>
-              <li>Consultar conceptos — <em>"¿Qué es el CTE?"</em></li>
-              <li>Practicar — <em>"Dame un ejercicio"</em></li>
-              <li>Ver el gráfico — <em>"Generá el gráfico de costos"</em></li>
-            </ul>
-          </div>
+        {/* Pantalla de bienvenida — sin mensajes aún */}
+        {messages.length === 0 && !loading && !typing && (
+          <Welcome onPick={(prompt) => sendText(prompt)} />
         )}
 
         {messages.map((m, i) => (
