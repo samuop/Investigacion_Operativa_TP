@@ -80,7 +80,7 @@ function showError(err) {
 }
 
 function run(cmd, args, opts = {}) {
-  const res = spawnSync(cmd, args, { stdio: "inherit", cwd: ROOT, ...opts });
+  const res = spawnSync(cmd, args, { stdio: "inherit", cwd: ROOT, shell: IS_WIN, ...opts });
   if (res.error) {
     if (res.error.code === "ENOENT") {
       throw new SetupError(`No se encontró el comando "${cmd}"`, {
@@ -191,11 +191,13 @@ function startServices() {
   // Backend: usar el python del venv → encuentra todas las dependencias
   const back = spawn(VENV_PY, ["-m", "uvicorn", "backend.main:app", "--reload"], {
     cwd: ROOT,
+    shell: IS_WIN,
   });
 
   // Frontend: vite vía npm
   const front = spawn(IS_WIN ? "npm.cmd" : "npm", ["--prefix", "frontend", "run", "dev"], {
     cwd: ROOT,
+    shell: IS_WIN,
   });
 
   pipe(back, "BACK", c.cyan);

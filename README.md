@@ -20,9 +20,10 @@ Agente conversacional para calcular y explicar el **Modelo de Inventario EOQ (Ca
 
 Solo necesitas tener instalado:
 
-- **Python 3.11 o superior** (en Windows, el instalador oficial incluye el lanzador `py`)
-- **Node.js 20 o superior** (trae `npm`)
-- Una **API key de Google AI Studio** (gratis) — obtenerla en [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+- **Python 3.11 o superior** — [python.org/downloads](https://www.python.org/downloads/)
+  - En Windows: durante la instalación marcá la opción **"Add Python to PATH"**
+- **Node.js 20 o superior** (trae `npm`) — [nodejs.org](https://nodejs.org/)
+- Una **API key de Google AI Studio** (gratis) — [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 
 > No hace falta crear el entorno virtual ni instalar dependencias a mano: el comando `npm run dev` se encarga de todo.
 
