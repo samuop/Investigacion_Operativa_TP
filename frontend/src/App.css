@@ -202,17 +202,29 @@ body {
 .session-context-menu button.danger:hover { background: rgba(224,92,92,0.12); }
 
 .btn-settings {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-muted);
-  padding: 8px 12px;
-  font-size: 0.82rem;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  padding: 12px 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
   width: 100%;
-  transition: color 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
 }
-.btn-settings:hover { color: var(--text); border-color: var(--accent); }
+.btn-settings:hover {
+  background: var(--accent-hover, #4f8ef7);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  transform: translateY(-1px);
+}
+.btn-settings:active { transform: translateY(0); box-shadow: none; }
 
 /* ── Chat ── */
 .chat {
