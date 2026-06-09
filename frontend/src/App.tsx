@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { api, SessionOut } from "./api";
 import Sidebar from "./components/Sidebar";
 import Chat from "./components/Chat";
+import HelpModal from "./components/HelpModal";
 import Settings from "./components/Settings";
 import "./App.css";
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [sessions, setSessions] = useState<SessionOut[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [backendDown, setBackendDown] = useState(false);
@@ -62,6 +64,7 @@ export default function App() {
         activeId={activeId}
         onSelect={handleSelect}
         onNew={handleNew}
+        onHelp={() => setShowHelp(true)}
         onSettings={() => setShowSettings(true)}
         onDeleted={handleDeleted}
         onRenamed={handleRenamed}
@@ -72,6 +75,7 @@ export default function App() {
           onSessionCreated={(id) => { setActiveId(id); loadSessions(); }}
           onSessionUpdate={loadSessions}
         />
+        {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
         {showSettings && <Settings onClose={() => setShowSettings(false)} />}
       </main>
     </div>

@@ -197,14 +197,18 @@ function Welcome({ onPick }: { onPick: (prompt: string) => void }) {
         <div className="welcome-icon"><Package size={36} strokeWidth={1.8} /></div>
         <h1>Chatbot EOQ</h1>
         <p>
-          Tu asistente del <strong>Modelo de Wilson</strong> para optimización de inventarios.{" "}
-          <span className="welcome-shine">Elegí una opción o escribí tu consulta.</span>
+          <strong>Las opciones que parpadean se pueden tocar.</strong> También podés escribir tu consulta abajo.
         </p>
       </div>
 
       <div className="welcome-cards">
-        {CAPABILITIES.map(({ Icon, title, desc, prompt }) => (
-          <button key={title} className="welcome-card" onClick={() => onPick(prompt)}>
+        {CAPABILITIES.map(({ Icon, title, desc, prompt }, index) => (
+          <button
+            key={title}
+            className="welcome-card"
+            onClick={() => onPick(prompt)}
+            style={{ animationDelay: `${index * 120}ms` }}
+          >
             <span className="welcome-card-icon"><Icon size={22} strokeWidth={1.8} /></span>
             <span className="welcome-card-title">{title}</span>
             <span className="welcome-card-desc">{desc}</span>

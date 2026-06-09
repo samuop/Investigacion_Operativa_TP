@@ -6,6 +6,7 @@ interface Props {
   activeId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onHelp: () => void;
   onSettings: () => void;
   onDeleted: (id: string) => void;
   onRenamed: (id: string, title: string) => void;
@@ -17,7 +18,7 @@ interface MenuState {
   y: number;
 }
 
-export default function Sidebar({ sessions, activeId, onSelect, onNew, onSettings, onDeleted, onRenamed }: Props) {
+export default function Sidebar({ sessions, activeId, onSelect, onNew, onHelp, onSettings, onDeleted, onRenamed }: Props) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -80,6 +81,11 @@ export default function Sidebar({ sessions, activeId, onSelect, onNew, onSetting
 
       <button className="btn-new" onClick={onNew}>
         + Nueva conversación
+      </button>
+
+      <button className="btn-help" onClick={onHelp}>
+        <span className="btn-help-icon">❓</span>
+        <span className="btn-help-text">Guía de ayuda</span>
       </button>
 
       <div className="sessions-list">
