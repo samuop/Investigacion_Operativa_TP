@@ -15,6 +15,7 @@ export interface MessageOut {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  duration_ms?: number | null;
 }
 
 export interface ChatOut {
@@ -103,7 +104,7 @@ export const api = {
   chatStream: async (
     session_id: string,
     message: string,
-    onReply: (full: string) => void,
+    onReply: (full: string, durationMs?: number) => void,
     onError: (msg: string, type?: string) => void,
   ) => {
     let res: Response;
@@ -140,7 +141,7 @@ export const api = {
         if (!line.startsWith("data: ")) continue;
         try {
           const data = JSON.parse(line.slice(6));
-          if (data.reply !== undefined) onReply(data.reply);
+          if (data.reply !== undefined) onReply(data.reply, data.duration_ms);
           if (data.error !== undefined) onError(data.raw ?? "", data.error);
         } catch {}
       }

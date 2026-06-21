@@ -32,6 +32,8 @@ class Message(Base):
     session_id = Column(String, ForeignKey("sessions.id"), nullable=False)
     role = Column(String, nullable=False)   # "user" o "assistant"
     content = Column(Text, nullable=False)
+    # Tiempo que tardó en generarse la respuesta (ms). Solo para "assistant".
+    duration_ms = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

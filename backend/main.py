@@ -96,6 +96,7 @@ class MessageOut(BaseModel):
     role: str
     content: str
     created_at: str
+    duration_ms: Optional[int] = None
 
 
 class ChatIn(BaseModel):
@@ -261,7 +262,12 @@ def get_messages(session_id: str, db: Session = Depends(get_db)):
         .all()
     )
     return [
-        MessageOut(role=m.role, content=m.content, created_at=m.created_at.isoformat())
+        MessageOut(
+            role=m.role,
+            content=m.content,
+            created_at=m.created_at.isoformat(),
+            duration_ms=m.duration_ms,
+        )
         for m in msgs
     ]
 
@@ -366,8 +372,10 @@ async def chat_stream(body: ChatIn, db: Session = Depends(get_db)):
         )
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        import time
         full_reply = ""
         error_type = None
+        started_at = time.perf_counter()
         try:
             content = Content(role="user", parts=[Part(text=body.message)])
             # No cortar con break: dejamos que el generador del ADK termine solo
@@ -397,14 +405,21 @@ async def chat_stream(body: ChatIn, db: Session = Depends(get_db)):
             yield f"data: {json.dumps({'error': error_type, 'raw': full_reply})}\n\n"
             return
 
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+
         # Guardar en DB
-        db.add(Message(session_id=body.session_id, role="assistant", content=full_reply))
+        db.add(Message(
+            session_id=body.session_id,
+            role="assistant",
+            content=full_reply,
+            duration_ms=duration_ms,
+        ))
         if db_session.title == "Nueva sesion":
             db_session.title = body.message[:40]
         db.commit()
         _try_log_eoq(body.session_id, body.message, full_reply, db)
 
-        yield f"data: {json.dumps({'reply': full_reply})}\n\n"
+        yield f"data: {json.dumps({'reply': full_reply, 'duration_ms': duration_ms})}\n\n"
 
     return StreamingResponse(
         event_generator(),

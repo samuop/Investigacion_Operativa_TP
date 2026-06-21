@@ -512,6 +512,18 @@ body {
 .message-bubble pre code { background: none; padding: 0; }
 .message-bubble h2, .message-bubble h3 { margin: 10px 0 6px; color: var(--accent); }
 
+.message-duration {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
 /* Cursor parpadeante ▍ — aparece inline al final del último elemento */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 

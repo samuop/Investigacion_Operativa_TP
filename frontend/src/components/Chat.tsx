@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Calculator, BookOpen, PenLine, LineChart, Package,
-  Hourglass, CloudOff, KeyRound, Unplug, AlertTriangle,
+  Hourglass, CloudOff, KeyRound, Unplug, AlertTriangle, Timer,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api, MessageOut } from "../api";
@@ -12,6 +12,13 @@ interface Props {
   sessionId: string | null;
   onSessionCreated: (id: string) => void;
   onSessionUpdate?: () => void;
+}
+
+// El backend persiste duration_ms; los mensajes locales usan el mismo campo.
+type ChatMessage = MessageOut;
+
+function formatDuration(ms: number): string {
+  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
 const ERROR_INFO: Record<string, { Icon: LucideIcon; title: string; body: string; hint?: string }> = {
@@ -136,7 +143,7 @@ function ChartImage({ url }: { url: string }) {
   );
 }
 
-function AssistantMessage({ content, showCursor }: { content: string; showCursor?: boolean }) {
+function AssistantMessage({ content, showCursor, durationMs }: { content: string; showCursor?: boolean; durationMs?: number }) {
   const chartUrl = extractChartUrl(content);
   const text = cleanText(content, chartUrl);
 
@@ -158,6 +165,12 @@ function AssistantMessage({ content, showCursor }: { content: string; showCursor
         : showCursor && <span>&nbsp;</span>
       }
       {showChart && <ChartImage url={chartUrl} />}
+      {durationMs != null && !showCursor && (
+        <div className="message-duration">
+          <Timer size={13} strokeWidth={2} />
+          Respondido en {formatDuration(durationMs)}
+        </div>
+      )}
     </div>
   );
 }
@@ -220,7 +233,7 @@ function Welcome({ onPick }: { onPick: (prompt: string) => void }) {
 }
 
 export default function Chat({ sessionId, onSessionCreated, onSessionUpdate }: Props) {
-  const [messages, setMessages] = useState<MessageOut[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typing, setTyping] = useState<string | null>(null); // texto en typewriter
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
@@ -293,7 +306,7 @@ export default function Chat({ sessionId, onSessionCreated, onSessionUpdate }: P
     }
 
     isSending.current = true;
-    const userMsg: MessageOut = { role: "user", content: text, created_at: new Date().toISOString() };
+    const userMsg: ChatMessage = { role: "user", content: text, created_at: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
@@ -305,7 +318,7 @@ export default function Chat({ sessionId, onSessionCreated, onSessionUpdate }: P
     await api.chatStream(
       sid,
       text,
-      (fullReply) => {
+      (fullReply, durationMs) => {
         setLoading(false);
         runTypewriter(fullReply, () => {
           // Typewriter terminó — fijar como mensaje definitivo
@@ -313,7 +326,7 @@ export default function Chat({ sessionId, onSessionCreated, onSessionUpdate }: P
           isSending.current = false;
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: fullReply, created_at: new Date().toISOString() },
+            { role: "assistant", content: fullReply, created_at: new Date().toISOString(), duration_ms: durationMs },
           ]);
           onSessionUpdate?.();
           requestAnimationFrame(() => inputRef.current?.focus());
@@ -340,7 +353,7 @@ export default function Chat({ sessionId, onSessionCreated, onSessionUpdate }: P
         {messages.map((m, i) => (
           <div key={i} className={`message ${m.role}`}>
             {m.role === "assistant"
-              ? <AssistantMessage content={m.content} />
+              ? <AssistantMessage content={m.content} durationMs={m.duration_ms ?? undefined} />
               : <div className="message-bubble"><p>{m.content}</p></div>}
           </div>
         ))}
