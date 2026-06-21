@@ -1,5 +1,8 @@
 const BASE = "http://localhost:8000";
 
+/** URL del WebSocket de voz (Gemini Live API relay). */
+export const VOICE_WS_URL = BASE.replace(/^http/, "ws") + "/ws/voice";
+
 export interface ConfigOut {
   model: string;
   has_api_key: boolean;

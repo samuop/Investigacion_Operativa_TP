@@ -950,3 +950,347 @@ body {
 
   .chat-input-row { padding: 12px; }
 }
+
+/* --- Botón de modo voz en el sidebar --- */
+.btn-voice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(79,142,247,0.18), rgba(79,142,247,0.06));
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.btn-voice:hover {
+  background: linear-gradient(135deg, rgba(79,142,247,0.32), rgba(79,142,247,0.14));
+  box-shadow: 0 2px 12px rgba(79,142,247,0.3);
+  transform: translateY(-1px);
+}
+.btn-voice:active { transform: translateY(0); }
+.btn-voice-icon { font-size: 1.05rem; }
+
+/* ===================================================================== */
+/*  MODO VOZ — pantalla completa inmersiva estilo Siri                    */
+/* ===================================================================== */
+
+.voice-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* Empujamos el conjunto orbe+info un poco hacia arriba para dejar la parte
+     baja libre para la lista de herramientas y el botón, sin solapamientos. */
+  padding-bottom: 18vh;
+  gap: 0;
+  overflow: hidden;
+  background: radial-gradient(140% 120% at 50% 42%, #11151f 0%, #06070d 70%);
+  animation: voice-fade-in 0.35s ease;
+}
+@keyframes voice-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Resplandor de fondo que cambia de color según el estado y respira.
+   Centrado exactamente detrás del orbe; círculo suave sin bordes duros. */
+.voice-bg-glow {
+  position: absolute;
+  top: 36%;
+  left: 50%;
+  width: 60vmin;
+  height: 60vmin;
+  margin: -30vmin 0 0 -30vmin;
+  border-radius: 50%;
+  filter: blur(90px);
+  background: radial-gradient(circle, var(--voice-glow, #4f8ef7) 0%, transparent 65%);
+  transition: background 0.6s ease;
+  animation: voice-breathe 5s ease-in-out infinite;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+@keyframes voice-breathe {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.62; transform: scale(1.1); }
+}
+
+/* Color del glow por estado (variable que usa .voice-bg-glow) */
+.voice-screen-listening   { --voice-glow: #4f8ef7; }
+.voice-screen-speaking    { --voice-glow: #34d399; }
+.voice-screen-thinking,
+.voice-screen-connecting  { --voice-glow: #a88bfa; }
+.voice-screen-error       { --voice-glow: #f87171; }
+.voice-screen-closed      { --voice-glow: #64748b; }
+
+.voice-close {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+  z-index: 2;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  transition: background 0.15s, color 0.15s;
+}
+.voice-close:hover { color: #fff; background: rgba(255,255,255,0.14); }
+
+.voice-stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  padding: 0 24px;
+}
+
+/* ---- El orbe ---- */
+.voice-orb {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Halos difuminados que giran (dan el aspecto "fluido") */
+.voice-orb-halo {
+  position: absolute;
+  inset: -6%;
+  border-radius: 50%;
+  filter: blur(14px);
+  opacity: 0.8;
+  background: conic-gradient(
+    from 0deg,
+    var(--voice-glow, #4f8ef7),
+    #8b5cf6,
+    #22d3ee,
+    var(--voice-glow, #4f8ef7)
+  );
+  transition: opacity 0.5s ease;
+}
+.voice-orb-halo-1 { animation: voice-rotate 8s linear infinite; }
+.voice-orb-halo-2 {
+  inset: 2%;
+  opacity: 0.5;
+  animation: voice-rotate 12s linear infinite reverse;
+}
+@keyframes voice-rotate { to { transform: rotate(360deg); } }
+
+/* Núcleo sólido con gradiente, encima de los halos */
+.voice-orb-core {
+  position: relative;
+  z-index: 1;
+  width: 78%;
+  height: 78%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255,255,255,0.25), transparent 55%),
+    radial-gradient(circle at 50% 50%, var(--voice-glow, #4f8ef7), #0c1322 90%);
+  box-shadow:
+    inset 0 0 30px rgba(255,255,255,0.18),
+    0 0 50px var(--voice-glow, #4f8ef7);
+  animation: voice-core-pulse 3s ease-in-out infinite;
+  /* Transición suave del color del orbe al cambiar de estado (escuchando->hablando) */
+  transition: background 0.6s ease, box-shadow 0.6s ease, animation-duration 0.4s ease;
+}
+@keyframes voice-core-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+/* Estados del orbe: velocidad/intensidad del pulso */
+.voice-orb-speaking .voice-orb-core { animation-duration: 1.1s; }
+.voice-orb-speaking .voice-orb-halo-1 { animation-duration: 4s; }
+.voice-orb-speaking .voice-orb-halo-2 { animation-duration: 6s; }
+.voice-orb-listening .voice-orb-core { animation-duration: 3s; }
+.voice-orb-error .voice-orb-core,
+.voice-orb-closed .voice-orb-core { animation: none; }
+.voice-orb-error .voice-orb-halo,
+.voice-orb-closed .voice-orb-halo { animation-play-state: paused; opacity: 0.4; }
+
+.voice-spin { animation: voice-spin 1s linear infinite; }
+@keyframes voice-spin { to { transform: rotate(360deg); } }
+
+/* Puntos pulsantes para "pensando / conectando" (más orgánico que un spinner) */
+.voice-dots {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.voice-dots span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 10px rgba(255,255,255,0.7);
+  animation: voice-dot 1.3s ease-in-out infinite;
+}
+@keyframes voice-dot {
+  0%, 100% { transform: scale(0.6); opacity: 0.4; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+/* Barras de onda reactivas (cuando el bot habla) */
+.voice-wave {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 56px;
+}
+.voice-wave span {
+  width: 7px;
+  height: 18px;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255,255,255,0.6);
+  animation: voice-wave-bar 0.9s ease-in-out infinite;
+}
+@keyframes voice-wave-bar {
+  0%, 100% { height: 16px; opacity: 0.7; }
+  50% { height: 52px; opacity: 1; }
+}
+
+/* Zona de info bajo el orbe: altura fija para que el orbe no se desplace
+   cuando aparecen/desaparecen el estado o el aviso de micrófono. */
+.voice-info {
+  margin-top: 34px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.voice-status {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.92);
+  max-width: 340px;
+}
+.voice-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.88rem;
+  background: rgba(248,113,113,0.12);
+  border: 1px solid rgba(248,113,113,0.35);
+  border-radius: 10px;
+  padding: 10px 14px;
+  max-width: 340px;
+}
+
+/* Aviso de micrófono en pausa — barra fija arriba, centrada */
+.voice-mic-off {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #fcd34d;
+  background: rgba(251,191,36,0.12);
+  border: 1px solid rgba(251,191,36,0.32);
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  animation: voice-fade-in 0.3s ease;
+}
+
+/* Lista de herramientas usadas (últimas 3) — banda anclada sobre el botón */
+.voice-tools {
+  position: absolute;
+  left: 50%;
+  bottom: 130px;
+  transform: translateX(-50%);
+  z-index: 1;
+  width: min(340px, 84vw);
+  text-align: left;
+}
+.voice-tools-title {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 9px;
+  text-align: center;
+}
+.voice-tools-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.voice-tool-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.88);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 9px 13px;
+  animation: voice-tool-in 0.3s ease;
+}
+.voice-tool-item svg { color: var(--voice-glow, #4f8ef7); flex-shrink: 0; }
+@keyframes voice-tool-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Botón de cortar, anclado abajo en la pantalla inmersiva */
+.voice-hangup {
+  position: absolute;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 30px;
+  border: none;
+  border-radius: 30px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 28px rgba(239,68,68,0.4);
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.voice-hangup:hover {
+  background: #dc2626;
+  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 12px 34px rgba(239,68,68,0.5);
+}
+.voice-hangup:active { transform: translateX(-50%) translateY(0); }

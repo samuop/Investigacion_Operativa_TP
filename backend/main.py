@@ -4,7 +4,7 @@ import json
 from contextlib import asynccontextmanager
 from typing import Optional, AsyncGenerator
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -429,6 +429,57 @@ async def chat_stream(body: ChatIn, db: Session = Depends(get_db)):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+# Endpoint de voz en tiempo real (Gemini Live API)
+# --------------------------------------------------------------------------- #
+
+@app.websocket("/ws/voice")
+async def voice_ws(ws: WebSocket):
+    """Canal de voz en tiempo real. Relay navegador <-> Gemini Live.
+
+    Independiente del chat de texto: usa la misma API key guardada, pero un
+    modelo Live distinto y ejecuta las tools EOQ vía function calling manual.
+    """
+    import sys
+    from backend.database import SessionLocal
+    from backend.voice import run_voice_relay
+
+    def _vlog(m):
+        print(f"[VOZ-WS] {m}", file=sys.stdout, flush=True)
+
+    _vlog("WebSocket /ws/voice -> accept()")
+    await ws.accept()
+
+    # Leer la API key de la config (nunca llega del navegador).
+    db = SessionLocal()
+    try:
+        config = db.query(Config).first()
+    finally:
+        db.close()
+
+    if not config or not config.api_key:
+        _vlog("sin API key configurada -> error + close")
+        await ws.send_json({
+            "type": "error",
+            "message": "No hay API key configurada. Ingresala en Configuración antes de usar el modo voz.",
+        })
+        await ws.close()
+        return
+
+    _vlog("API key OK -> entrando al relay")
+    try:
+        await run_voice_relay(ws, config.api_key)
+        _vlog("run_voice_relay retornó normalmente")
+    except Exception as e:
+        _vlog(f"run_voice_relay lanzó: {type(e).__name__}: {e}")
+    finally:
+        _vlog("cerrando WebSocket /ws/voice")
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 def _try_log_eoq(session_id: str, user_msg: str, reply: str, db: Session) -> None:

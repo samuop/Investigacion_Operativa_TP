@@ -188,30 +188,61 @@ function ensureFrontendDeps() {
 function startServices() {
   console.log(`\n${c.green("▶ Levantando backend y frontend...")}\n`);
 
+  // En POSIX, `detached: true` hace al hijo líder de su grupo de procesos,
+  // para poder matar todo el grupo con process.kill(-pid). En Windows usamos
+  // taskkill /T, así que no hace falta (y shell:true ya envuelve en cmd).
+  const spawnOpts = { cwd: ROOT, shell: IS_WIN, detached: !IS_WIN };
+
   // Backend: usar el python del venv → encuentra todas las dependencias
-  const back = spawn(VENV_PY, ["-m", "uvicorn", "backend.main:app", "--reload"], {
-    cwd: ROOT,
-    shell: IS_WIN,
-  });
+  const back = spawn(VENV_PY, ["-m", "uvicorn", "backend.main:app", "--reload"], spawnOpts);
 
   // Frontend: vite vía npm
-  const front = spawn(IS_WIN ? "npm.cmd" : "npm", ["--prefix", "frontend", "run", "dev"], {
-    cwd: ROOT,
-    shell: IS_WIN,
-  });
+  const front = spawn(IS_WIN ? "npm.cmd" : "npm", ["--prefix", "frontend", "run", "dev"], spawnOpts);
 
   pipe(back, "BACK", c.cyan);
   pipe(front, "FRONT", c.magenta);
 
-  // Si uno muere, matamos al otro y salimos
+  // Si uno muere, matamos al otro y salimos.
+  let shuttingDown = false;
   const killAll = () => {
-    back.kill();
-    front.kill();
+    if (shuttingDown) return;
+    shuttingDown = true;
+    killTree(back);
+    killTree(front);
   };
-  back.on("exit", (code) => { warn(`backend terminó (${code})`); front.kill(); process.exit(code ?? 0); });
-  front.on("exit", (code) => { warn(`frontend terminó (${code})`); back.kill(); process.exit(code ?? 0); });
+  back.on("exit", (code) => {
+    if (shuttingDown) return;
+    warn(`backend terminó (${code})`);
+    killAll();
+    process.exit(code ?? 0);
+  });
+  front.on("exit", (code) => {
+    if (shuttingDown) return;
+    warn(`frontend terminó (${code})`);
+    killAll();
+    process.exit(code ?? 0);
+  });
   process.on("SIGINT", () => { killAll(); process.exit(0); });
   process.on("SIGTERM", () => { killAll(); process.exit(0); });
+}
+
+/**
+ * Mata un proceso y TODO su árbol de hijos.
+ *
+ * Importante en Windows: uvicorn con `--reload` lanza un proceso supervisor
+ * que a su vez crea un worker hijo. Un `proc.kill()` normal mata solo al
+ * proceso directo y deja al worker huérfano escuchando el puerto, lo que
+ * causa conflictos de puerto y backends fantasma en el siguiente arranque.
+ * `taskkill /T` (tree) mata toda la cadena.
+ */
+function killTree(proc) {
+  if (!proc || proc.killed || proc.pid == null) return;
+  if (IS_WIN) {
+    // /T = árbol completo, /F = forzado. Silencioso: el proceso puede ya no existir.
+    spawnSync("taskkill", ["/PID", String(proc.pid), "/T", "/F"], { stdio: "ignore" });
+  } else {
+    try { process.kill(-proc.pid, "SIGTERM"); } catch { proc.kill("SIGTERM"); }
+  }
 }
 
 /** Prefija cada línea de salida de un proceso con [NOMBRE] coloreado. */

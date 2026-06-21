@@ -8,6 +8,7 @@ interface Props {
   onNew: () => void;
   onHelp: () => void;
   onSettings: () => void;
+  onVoice: () => void;
   onDeleted: (id: string) => void;
   onRenamed: (id: string, title: string) => void;
 }
@@ -18,7 +19,7 @@ interface MenuState {
   y: number;
 }
 
-export default function Sidebar({ sessions, activeId, onSelect, onNew, onHelp, onSettings, onDeleted, onRenamed }: Props) {
+export default function Sidebar({ sessions, activeId, onSelect, onNew, onHelp, onSettings, onVoice, onDeleted, onRenamed }: Props) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -81,6 +82,11 @@ export default function Sidebar({ sessions, activeId, onSelect, onNew, onHelp, o
 
       <button className="btn-new" onClick={onNew}>
         + Nueva conversación
+      </button>
+
+      <button className="btn-voice" onClick={onVoice}>
+        <span className="btn-voice-icon">🎙️</span>
+        <span>Hablar con el bot</span>
       </button>
 
       <button className="btn-help" onClick={onHelp}>

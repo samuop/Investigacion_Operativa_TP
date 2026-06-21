@@ -4,11 +4,13 @@ import Sidebar from "./components/Sidebar";
 import Chat from "./components/Chat";
 import HelpModal from "./components/HelpModal";
 import Settings from "./components/Settings";
+import VoiceCall from "./components/VoiceCall";
 import "./App.css";
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showVoice, setShowVoice] = useState(false);
   const [sessions, setSessions] = useState<SessionOut[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [backendDown, setBackendDown] = useState(false);
@@ -66,6 +68,7 @@ export default function App() {
         onNew={handleNew}
         onHelp={() => setShowHelp(true)}
         onSettings={() => setShowSettings(true)}
+        onVoice={() => setShowVoice(true)}
         onDeleted={handleDeleted}
         onRenamed={handleRenamed}
       />
@@ -77,6 +80,7 @@ export default function App() {
         />
         {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
         {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+        {showVoice && <VoiceCall onClose={() => setShowVoice(false)} />}
       </main>
     </div>
   );
