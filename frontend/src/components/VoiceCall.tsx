@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Mic, MicOff, PhoneOff, X, Wrench } from "lucide-react";
+import { Mic, MicOff, PhoneOff, X, Wrench, Maximize2 } from "lucide-react";
 import { VOICE_WS_URL } from "../api";
 
 interface Props {
@@ -7,6 +7,12 @@ interface Props {
 }
 
 type Status = "connecting" | "listening" | "speaking" | "thinking" | "error" | "closed";
+
+// Entrada de la transcripción/panel: habla, uso de herramienta o gráfico.
+type TranscriptEntry =
+  | { kind: "speech"; role: "user" | "assistant"; text: string; final: boolean }
+  | { kind: "tool"; label: string }
+  | { kind: "chart"; url: string };
 
 const OUTPUT_SAMPLE_RATE = 24000; // la Live API emite a 24 kHz
 
@@ -27,6 +33,10 @@ export default function VoiceCall({ onClose }: Props) {
   const [toolLog, setToolLog] = useState<string[]>([]);
   // Mensaje de cierre (despedida del bot o inactividad), para mostrarlo al cerrar.
   const [closeNote, setCloseNote] = useState<string | null>(null);
+  // Transcripción en vivo + gráficos (panel lateral).
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  // URL del gráfico ampliado a pantalla completa (lightbox), o null.
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   // Refs de audio/red — no provocan re-render.
   const wsRef = useRef<WebSocket | null>(null);
@@ -34,6 +44,8 @@ export default function VoiceCall({ onClose }: Props) {
   const playCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  // Para auto-scroll del panel de transcripción.
+  const panelEndRef = useRef<HTMLDivElement>(null);
 
   // Cola de reproducción: programamos cada chunk justo después del anterior.
   const nextPlayTimeRef = useRef<number>(0);
@@ -86,6 +98,24 @@ export default function VoiceCall({ onClose }: Props) {
       onCloseRef.current();
     }
   }, [cleanup]);
+
+  // Acumula los fragmentos de transcripción en el último turno del mismo rol,
+  // o crea una entrada nueva si cambió el hablante o el turno anterior cerró.
+  const addTranscript = useCallback(
+    (role: "user" | "assistant", text: string, final: boolean) => {
+      setTranscript((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.kind === "speech" && last.role === role && !last.final) {
+          const updated: TranscriptEntry = {
+            ...last, text: last.text + text, final: last.final || final,
+          };
+          return [...prev.slice(0, -1), updated];
+        }
+        return [...prev, { kind: "speech", role, text, final }];
+      });
+    },
+    [],
+  );
 
   // (Re)arranca el temporizador de inactividad: 1 min sin que el usuario hable.
   const armInactivityTimer = useCallback(() => {
@@ -187,9 +217,17 @@ export default function VoiceCall({ onClose }: Props) {
             case "tool": {
               const label = TOOL_LABELS[msg.name] || msg.name;
               setToolLog((prev) => [...prev, label]);
+              // Mostrar el uso de la herramienta en el hilo (estilo Claude Code).
+              setTranscript((prev) => [...prev, { kind: "tool", label }]);
               setStatus("thinking");
               break;
             }
+            case "transcript":
+              if (msg.text) addTranscript(msg.role, msg.text, !!msg.final);
+              break;
+            case "chart":
+              if (msg.url) setTranscript((prev) => [...prev, { kind: "chart", url: msg.url }]);
+              break;
             case "interrupted":
               stopPlayback();
               setStatus("listening");
@@ -276,7 +314,20 @@ export default function VoiceCall({ onClose }: Props) {
 
     start();
     return () => { cancelled = true; cleanup(); };
-  }, [cleanup, playChunk, stopPlayback, armInactivityTimer, closeCall]);
+  }, [cleanup, playChunk, stopPlayback, armInactivityTimer, closeCall, addTranscript]);
+
+  // Auto-scroll del panel hacia el último mensaje.
+  useEffect(() => {
+    panelEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [transcript]);
+
+  // Cerrar el lightbox del gráfico con la tecla Escape.
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   function handleHangUp() {
     closeCall();
@@ -294,11 +345,14 @@ export default function VoiceCall({ onClose }: Props) {
   // Mientras el bot habla, el micro queda en pausa (no captamos su eco).
   const micMuted = status === "speaking";
 
-  return (
-    <div className={`voice-screen voice-screen-${status}`} role="dialog" aria-modal="true">
-      {/* Fondo con resplandor que respira según el estado */}
-      <div className="voice-bg-glow" />
+  const hasPanel = transcript.length > 0;
 
+  return (
+    <div
+      className={`voice-screen voice-screen-${status}${hasPanel ? " voice-screen-split" : ""}`}
+      role="dialog"
+      aria-modal="true"
+    >
       <button className="voice-close" onClick={handleHangUp} aria-label="Cerrar">
         <X size={22} />
       </button>
@@ -310,56 +364,106 @@ export default function VoiceCall({ onClose }: Props) {
         </div>
       )}
 
-      <div className="voice-stage">
-        {/* Orbe gradiente fluido con halos y ondas reactivas */}
-        <div className={`voice-orb voice-orb-${status}`}>
-          <div className="voice-orb-halo voice-orb-halo-1" />
-          <div className="voice-orb-halo voice-orb-halo-2" />
-          <div className="voice-orb-core">
-            {status === "speaking" ? (
-              <div className="voice-wave">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <span key={i} style={{ animationDelay: `${i * 0.12}s` }} />
-                ))}
-              </div>
-            ) : status === "connecting" || status === "thinking" ? (
-              <div className="voice-dots">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <span key={i} style={{ animationDelay: `${i * 0.18}s` }} />
-                ))}
-              </div>
-            ) : status === "error" || status === "closed" ? (
-              <MicOff size={44} />
-            ) : (
-              <Mic size={44} />
-            )}
+      {/* Columna izquierda: orbe + estado + botón */}
+      <div className="voice-left">
+        {/* Fondo con resplandor que respira según el estado */}
+        <div className="voice-bg-glow" />
+
+        <div className="voice-stage">
+          {/* Orbe gradiente fluido con halos y ondas reactivas */}
+          <div className={`voice-orb voice-orb-${status}`}>
+            <div className="voice-orb-halo voice-orb-halo-1" />
+            <div className="voice-orb-halo voice-orb-halo-2" />
+            <div className="voice-orb-core">
+              {status === "speaking" ? (
+                <div className="voice-wave">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <span key={i} style={{ animationDelay: `${i * 0.12}s` }} />
+                  ))}
+                </div>
+              ) : status === "connecting" || status === "thinking" ? (
+                <div className="voice-dots">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <span key={i} style={{ animationDelay: `${i * 0.18}s` }} />
+                  ))}
+                </div>
+              ) : status === "error" || status === "closed" ? (
+                <MicOff size={44} />
+              ) : (
+                <Mic size={44} />
+              )}
+            </div>
+          </div>
+
+          {/* Zona de info de altura fija: el orbe nunca se mueve aunque cambie. */}
+          <div className="voice-info">
+            <p className="voice-status">{closeNote ?? statusText[status]}</p>
+            {errorMsg && <p className="voice-error">{errorMsg}</p>}
           </div>
         </div>
 
-        {/* Zona de info de altura fija: el orbe nunca se mueve aunque cambie. */}
-        <div className="voice-info">
-          <p className="voice-status">{closeNote ?? statusText[status]}</p>
-          {errorMsg && <p className="voice-error">{errorMsg}</p>}
-        </div>
+        <button className="voice-hangup" onClick={handleHangUp}>
+          <PhoneOff size={20} /> {status === "error" || status === "closed" ? "Cerrar" : "Cortar llamada"}
+        </button>
       </div>
 
-      {/* Lista de herramientas: anclada abajo, no afecta la posición del orbe */}
-      {toolLog.length > 0 && (
-        <div className="voice-tools">
-          <span className="voice-tools-title">Herramientas usadas</span>
-          <ul className="voice-tools-list">
-            {toolLog.slice(-3).map((t, i) => (
-              <li key={toolLog.length - 3 + i} className="voice-tool-item">
-                <Wrench size={13} /> {t}
-              </li>
-            ))}
-          </ul>
+      {/* Columna derecha: panel de transcripción en vivo + gráficos */}
+      {hasPanel && (
+        <div className="voice-panel">
+          <div className="voice-panel-header">
+            <span>Transcripción en vivo</span>
+            {toolLog.length > 0 && (
+              <span className="voice-panel-tool">
+                <Wrench size={12} /> {toolLog[toolLog.length - 1]}
+              </span>
+            )}
+          </div>
+          <div className="voice-panel-body">
+            {transcript.map((entry, i) => {
+              if (entry.kind === "tool") {
+                return (
+                  <div key={i} className="voice-event">
+                    <Wrench size={13} />
+                    <span>{entry.label}</span>
+                  </div>
+                );
+              }
+              if (entry.kind === "chart") {
+                return (
+                  <button
+                    key={i}
+                    className="voice-bubble-chart"
+                    onClick={() => setLightbox(entry.url)}
+                    title="Click para ampliar"
+                  >
+                    <img src={entry.url} alt="Gráfico EOQ" />
+                    <span className="voice-chart-zoom"><Maximize2 size={15} /> Ampliar</span>
+                  </button>
+                );
+              }
+              return (
+                <div key={i} className={`voice-bubble voice-bubble-${entry.role}`}>
+                  <span className="voice-bubble-who">
+                    {entry.role === "user" ? "Vos" : "Asistente"}
+                  </span>
+                  <p>{entry.text}</p>
+                </div>
+              );
+            })}
+            <div ref={panelEndRef} />
+          </div>
         </div>
       )}
 
-      <button className="voice-hangup" onClick={handleHangUp}>
-        <PhoneOff size={20} /> {status === "error" || status === "closed" ? "Cerrar" : "Cortar llamada"}
-      </button>
+      {/* Lightbox: gráfico ampliado a pantalla completa */}
+      {lightbox && (
+        <div className="voice-lightbox" onClick={() => setLightbox(null)}>
+          <button className="voice-lightbox-close" aria-label="Cerrar">
+            <X size={26} />
+          </button>
+          <img src={lightbox} alt="Gráfico EOQ ampliado" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }

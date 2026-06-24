@@ -178,14 +178,14 @@ def _ejecutar_tool(name: str, args: dict[str, Any]) -> dict:
 # gráficos). Este prompt además explica cómo funcionan las herramientas por
 # dentro, para que el asistente pueda explicar su razonamiento si se lo piden.
 
-VOICE_SYSTEM_PROMPT = """Sos un asistente de voz especializado en el **Modelo EOQ (Cantidad Económica de Pedido)**, también llamado **Modelo de Wilson**, para gestión de inventarios. Estás en una **llamada telefónica por voz**: el usuario te ESCUCHA, no ve ninguna pantalla.
+VOICE_SYSTEM_PROMPT = """Sos un asistente de voz especializado en el **Modelo EOQ (Cantidad Económica de Pedido)**, también llamado **Modelo de Wilson**, para gestión de inventarios. Estás en una **llamada de voz**: el usuario te ESCUCHA. A tu lado hay un panel que muestra la transcripción en vivo y los gráficos que generes.
 
 ## Reglas de la conversación por voz (críticas)
-- El usuario NO ve nada: no puede leer tablas, fórmulas escritas, ni gráficos. Todo lo que comuniques tiene que entenderse SOLO escuchándolo.
+- Comunicá todo lo importante HABLANDO: lo principal tiene que entenderse solo escuchándote. El panel es un apoyo visual, no un reemplazo de tu explicación.
 - Hablá en español rioplatense, natural y conversacional, como en una llamada. Frases cortas. Una idea por vez.
 - NUNCA leas markdown, símbolos, ni notación. No digas "asterisco", "almohadilla" ni "barra". Nada de LaTeX.
 - Al decir números, redondealos de forma hablable: "alrededor de 110 unidades", "unos 87 mil pesos". No recites decimales largos.
-- No ofrezcas "generar un gráfico" ni "mostrar una tabla": no hay pantalla. Si un cálculo se entendería mejor visualmente, ofrecé en cambio resumir los puntos clave en voz, o sugerí usar el chat de texto.
+- Para los gráficos: cuando un cálculo se entienda mejor con la curva de costos, ofrecé generarlo y usá `generar_grafico`. El gráfico aparece en el panel al costado; avisale al usuario ("te lo muestro en el panel") y explicá en voz qué se ve (la curva en U, dónde está el óptimo).
 - Sé breve. Si la respuesta es larga, dale lo esencial y preguntá si quiere más detalle.
 
 ## Cómo funcionan tus herramientas por dentro (para que puedas explicar tu razonamiento)
@@ -197,7 +197,7 @@ Tenés herramientas que hacen los cálculos. Si el usuario te pregunta "¿cómo 
 - **validar_parametros**: chequea que demanda, costo de pedido y costo de mantener sean positivos antes de calcular.
 - **explicar_concepto**: trae la explicación de conceptos (supuestos, CTE, demanda, etc.).
 - **modo_practica**: inventa un ejercicio nuevo con su solución.
-- **generar_grafico**: existe, pero en voz NO la uses (el usuario no puede ver imágenes).
+- **generar_grafico**: genera el gráfico de las curvas de costo (pedido, mantenimiento y total). El gráfico se muestra en el panel al costado. Usala cuando ayude a visualizar el óptimo, y explicá en voz qué representa.
 
 Cuando uses una herramienta, contale al usuario el resultado en voz; si pregunta el porqué, explicá la fórmula como arriba. Nunca te limites a decir "llamé a una herramienta": explicá el cálculo de verdad.
 
@@ -246,6 +246,10 @@ def build_live_config() -> types.LiveConnectConfig:
             parts=[types.Part(text=VOICE_SYSTEM_PROMPT)],
         ),
         tools=[{"function_declarations": FUNCTION_DECLARATIONS}],
+        # Transcripción en vivo de ambos lados (para el panel lateral):
+        # lo que dice el usuario (input) y lo que dice el bot (output).
+        input_audio_transcription=types.AudioTranscriptionConfig(),
+        output_audio_transcription=types.AudioTranscriptionConfig(),
         # Detección automática de actividad de voz (VAD) explícita: alta
         # sensibilidad al fin del habla y ~0.8 s de silencio para cerrar el
         # turno. Evita que el turno quede colgado esperando.
@@ -274,6 +278,9 @@ def build_live_config() -> types.LiveConnectConfig:
 #     {"type": "tool", "name": "...", "args": {...}}      el bot invocó una herramienta (UI)
 #     {"type": "interrupted"}                             el usuario interrumpió: vaciar cola
 #     {"type": "turn_complete"}                           el bot terminó de hablar
+#     {"type": "transcript", "role": "user|assistant", "text": "...", "final": bool}
+#                                                         transcripción en vivo
+#     {"type": "chart", "url": "..."}                     gráfico generado (QuickChart)
 #     {"type": "bye", "motivo": "..."}                    el bot decidió finalizar la llamada
 #     {"type": "error", "message": "..."}                 error fatal
 
@@ -400,6 +407,12 @@ async def run_voice_relay(ws, api_key: str) -> None:
                             result = _ejecutar_tool(fc.name, args)
                             log.info("[G->B] tool %s ejecutada -> %s", fc.name,
                                      "error" if (isinstance(result, dict) and result.get("error")) else "ok")
+                            # Si generó un gráfico, mandamos la URL al panel.
+                            if fc.name == "generar_grafico" and isinstance(result, dict):
+                                url = result.get("url_grafico")
+                                if url:
+                                    await ws.send_json({"type": "chart", "url": url})
+                                    log.info("[G->B] gráfico enviado al panel")
                             await session.send_tool_response(
                                 function_responses=[types.FunctionResponse(
                                     id=fc.id, name=fc.name, response=result,
@@ -417,6 +430,20 @@ async def run_voice_relay(ws, api_key: str) -> None:
                                 "data": base64.b64encode(response.data).decode("ascii"),
                             })
                         continue
+
+                    # Transcripciones en vivo (panel lateral).
+                    in_tr = getattr(sc, "input_transcription", None)
+                    if in_tr and in_tr.text:
+                        await ws.send_json({
+                            "type": "transcript", "role": "user",
+                            "text": in_tr.text, "final": bool(getattr(in_tr, "finished", False)),
+                        })
+                    out_tr = getattr(sc, "output_transcription", None)
+                    if out_tr and out_tr.text:
+                        await ws.send_json({
+                            "type": "transcript", "role": "assistant",
+                            "text": out_tr.text, "final": bool(getattr(out_tr, "finished", False)),
+                        })
 
                     # 2) Interrupción: el usuario habló encima del bot.
                     if sc.interrupted:
